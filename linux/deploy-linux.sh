@@ -1,5 +1,5 @@
 #!/bin/bash
-# deploy-mingw.sh [executable]
+# deploy-linux.sh [executable]
 #   (Simplified) bash re-implementation of [linuxdeploy](https://github.com/linuxdeploy).
 #   Reads [executable] and copies required libraries to [AppDir]/usr/lib
 #   Copies the desktop and svg icon to [AppDir]
@@ -16,7 +16,7 @@
 # unhelpful.
 #~ set -x
 export _PREFIX="/usr"
-export _SEARCH_PATHS="$(echo -n ${_PREFIX}/lib64 | tr ':' ' ')"
+export _LIB_DIRS="lib64 lib"
 export _DEPLOY_QT=0
 export _QT_PLUGIN_PATH="${_PREFIX}/lib64/qt5/plugins"
 export _EXCLUDES="ld-linux.so.2 ld-linux-x86-64.so.2 libanl.so.1 libBrokenLocale.so.1 libcidn.so.1 \
@@ -29,6 +29,23 @@ libexpat.so.1 libgcc_s.so.1 libgpg-error.so.0 libICE.so.6 libp11-kit.so.0 libSM.
 libusb-1.0.so.0 libuuid.so.1 libz.so.1 libpangoft2-1.0.so.0 libpangocairo-1.0.so.0 \
 libpango-1.0.so.0 libgpg-error.so.0 libjack.so.0 libxcb-dri3.so.0 libxcb-dri2.so.0 \
 libfribidi.so.0 libgmp.so.10"
+
+export _EXECUTABLE="$1"
+
+# Get possible system library paths
+export _SYSTEM_PATHS=$(echo -n $PATH | tr ":" " ")
+export _SEARCH_PATHS=
+for i in ${_LIB_DIRS}; do
+  for j in ${_SYSTEM_PATHS}; do
+    _TRY_PATH=$(readlink -e "$j/../$i")
+    if [[ -n "${_TRY_PATH}" ]]; then
+      _SEARCH_PATHS="${_SEARCH_PATHS} ${_TRY_PATH}"
+    fi
+  done
+done
+_SEARCH_PATHS="${_SEARCH_PATHS} $(patchelf --print-rpath $_EXECUTABLE | tr ':' ' ')"
+# Get a list of only unique ones
+_SEARCH_PATHS=$(echo -n "${_SEARCH_PATHS}" | sed 's/ /\n/g' | sort -u)
 
 # find_library [library]
 #  Finds the full path of partial name [library] in _SEARCH_PATHS
@@ -72,7 +89,7 @@ function get_deps {
       echo -n "$i:"
       continue
     fi
-    >&2 cp -v $_LIB $_DEST/$i
+    >&2 cp -v $_LIB $_DEST/$i &
     get_deps $_LIB $_DEST
   done
 }
@@ -82,11 +99,11 @@ export -f get_dep_names
 export -f find_library
 
 _ERROR=0
-if [ -z $1 ]; then
+if [ -z "$_EXECUTABLE" ]; then
   _ERROR=1
 fi
 
-if [ $_ERROR -eq 1 ]; then
+if [ "$_ERROR" -eq 1 ]; then
   >&2 echo "usage: $0 <executable> [-qt]"
   exit 1
 fi
@@ -95,9 +112,9 @@ if [[ "$2" == "-qt" ]]; then
   _DEPLOY_QT=1
 fi
 
-LIB_DIR=$(dirname $(readlink -e $1))
+LIB_DIR=$(dirname $(readlink -e $_EXECUTABLE))
 mkdir -p $LIB_DIR
-_NOT_FOUND=$(get_deps $1 $LIB_DIR)
+_NOT_FOUND=$(get_deps $_EXECUTABLE $LIB_DIR)
 
 if [ $_DEPLOY_QT -eq 1 ]; then
   mkdir -p platforms imageformats styles
