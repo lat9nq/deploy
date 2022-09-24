@@ -23,7 +23,7 @@ export _QT_PLUGIN_PATH="${_MINGW_PREFIX}/lib/qt5/plugins"
 export _EXCLUDES='ADVAPI32.dll AVRT.dll bcrypt.dll CRYPT32.dll d3d11.dll dwmapi.dll dxgi.dll \
 GDI32.dll IMM32.dll IPHLPAPI.DLL KERNEL32.dll MPR.dll msvcrt.dll NETAPI32.dll ole32.dll \
 OLEAUT32.dll OPENGL32.dll SETUPAPI.dll SHELL32.dll USER32.dll USERENV.dll UxTheme.dll VERSION.dll \
-WINMM.dll WS2_32.dll WTSAPI32.dll'
+WINMM.dll WS2_32.dll WTSAPI32.dll MSWSOCK.dll DNSAPI.dll'
 
 # find_library [library]
 #   Finds the full path of partial name [library] in _SEARCH_PATHS
