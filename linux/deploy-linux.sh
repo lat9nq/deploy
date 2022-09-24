@@ -1,5 +1,5 @@
 #!/bin/bash
-# deploy-linux.sh [executable]
+# [DEPLOY_QT=1] deploy-linux.sh <executable>
 #   (Simplified) bash re-implementation of [linuxdeploy](https://github.com/linuxdeploy).
 #   Reads [executable] and copies required libraries to [AppDir]/usr/lib
 #   Copies the desktop and svg icon to [AppDir]
@@ -17,7 +17,6 @@
 #~ set -x
 export _PREFIX="/usr"
 export _LIB_DIRS="lib64 lib"
-export _DEPLOY_QT=0
 export _QT_PLUGIN_PATH="${_PREFIX}/lib64/qt5/plugins"
 export _EXCLUDES="ld-linux.so.2 ld-linux-x86-64.so.2 libanl.so.1 libBrokenLocale.so.1 libcidn.so.1 \
 libc.so.6 libdl.so.2 libm.so.6 libmvec.so.1 libnss_compat.so.2 libnss_dns.so.2 libnss_files.so.2 \
@@ -37,7 +36,7 @@ export _SYSTEM_PATHS=$(echo -n $PATH | tr ":" " ")
 export _SEARCH_PATHS=
 for i in ${_LIB_DIRS}; do
   for j in ${_SYSTEM_PATHS}; do
-    _TRY_PATH=$(readlink -e "$j/../$i")
+    _TRY_PATH="$(readlink -e "$j/../$i" || true)"
     if [[ -n "${_TRY_PATH}" ]]; then
       _SEARCH_PATHS="${_SEARCH_PATHS} ${_TRY_PATH}"
     fi
@@ -54,7 +53,7 @@ _NOT_FOUND=""
 function find_library {
   local _PATH=""
   for i in ${_SEARCH_PATHS}; do
-    _PATH=$(find $i -maxdepth 1 -regex ".*$(echo -n $1 | tr '+' '.')" -print -quit)
+    _PATH=$(find $i -regex ".*$(echo -n $1 | tr '+' '.')" -print -quit)
     if [ "$_PATH" != "" ]; then
       break
     fi
@@ -104,31 +103,47 @@ if [ -z "$_EXECUTABLE" ]; then
 fi
 
 if [ "$_ERROR" -eq 1 ]; then
-  >&2 echo "usage: $0 <executable> [-qt]"
+  >&2 echo "usage: $0 <executable> [AppDir]"
   exit 1
 fi
 
-if [[ "$2" == "-qt" ]]; then
-  _DEPLOY_QT=1
-fi
-
-LIB_DIR=$(dirname $(readlink -e $_EXECUTABLE))
+LIB_DIR="$(readlink -m $(dirname $_EXECUTABLE)/../lib)"
 mkdir -p $LIB_DIR
 _NOT_FOUND=$(get_deps $_EXECUTABLE $LIB_DIR)
 
-if [ $_DEPLOY_QT -eq 1 ]; then
-  mkdir -p platforms imageformats styles
-  cp -nv "${_QT_PLUGIN_PATH}/platforms/libqxcb.so" platforms/
-  #~ cp -rnv "${_QT_PLUGIN_PATH}/mediaservice/" ./
-  cp -rnv ${_QT_PLUGIN_PATH}/imageformats/*.so ./imageformats
-  cp -rnv ${_QT_PLUGIN_PATH}/styles/*.so ./styles
-  touch qt.conf
+if [ "${DEPLOY_QT}" == "1" ]; then
+  # Find Qt path from search paths
+  for i in ${_SEARCH_PATHS}; do
+    _QT_CORE_LIB=$(find ${i} -type f -regex '.*/libQt5Core\.so.*' | head -n 1)
+    if [ -n "${_QT_CORE_LIB}" ]; then
+      _QT_PATH=$(dirname ${_QT_CORE_LIB})/../
+      break
+    fi
+  done
+  
+  _QT_PLUGIN_PATH=$(readlink -e $(find ${_QT_PATH} -type d -regex '.*/plugins/platforms' | head -n 1)/../)
+  
+  mkdir -p ${LIB_DIR}/qt5/plugins/{platforms,imageformats}
+  cp -nv "${_QT_PLUGIN_PATH}/platforms/libqxcb.so" ${LIB_DIR}/qt5/plugins/platforms/
+  cp -rnv ${_QT_PLUGIN_PATH}/imageformats/*.so ${LIB_DIR}/qt5/plugins/imageformats
+  _QT_CONF=${LIB_DIR}/../bin/qt.conf
+  touch ${_QT_CONF}
+  echo "[Paths]" >> ${_QT_CONF}
+  echo "Prefix = ../lib/qt5" >> ${_QT_CONF}
+  echo "Plugins = qt5/plugins" >> ${_QT_CONF}
+  echo "Imports = qml" >> ${_QT_CONF}
+  echo "Qml2Imports = qml" >> ${_QT_CONF}
 
 	# Find any remaining libraries needed for Qt libraries
-  _NOT_FOUND+=$(get_deps platforms/libqxcb.so $LIB_DIR)
-  _NOT_FOUND+=$(find $(pwd)/imageformats -type f -exec bash -c "get_deps {} $LIB_DIR" ';')
-  _NOT_FOUND+=$(find $(pwd)/styles -type f -exec bash -c "get_deps {} $LIB_DIR" ';')
+  _NOT_FOUND+=$(get_deps ${LIB_DIR}/qt5/plugins/platforms/libqxcb.so $LIB_DIR)
+  _NOT_FOUND+=$(find ${LIB_DIR}/qt5/plugins/imageformats -type f -exec bash -c "get_deps {} $LIB_DIR" ';')
 fi
+
+_APPDIR=$2
+cd ${_APPDIR}
+
+cp -nvs $(find -type f -regex '.*/icons/.*\.svg' || head -n 1) ./
+cp -nvs $(find -type f -regex '.*/applications/.*\.desktop' || head -n 1) ./
 
 if [ "${_NOT_FOUND}" != "" ]; then
   >&2 echo "WARNING: failed to find the following libraries:"
