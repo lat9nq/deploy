@@ -124,10 +124,14 @@ if [ "${DEPLOY_QT}" == "1" ]; then
   _QT_PLUGIN_PATH=$(readlink -e $(find ${_QT_PATH} -type d -regex '.*/plugins/platforms' | head -n 1)/../)
   
   cp -nv "${_QT_PLUGIN_PATH}/platforms/libqxcb.so" ${LIB_DIR}/qt5/plugins/platforms/
+	# Find any remaining libraries needed for Qt libraries
+  _NOT_FOUND+=$(get_deps ${LIB_DIR}/qt5/plugins/platforms/libqxcb.so $LIB_DIR)
 
-  for i in audio bearer mediaservice platforminputcontexts platformthemes xcbglintegrations; do
+  for i in audio bearer imageformats mediaservice platforminputcontexts platformthemes xcbglintegrations; do
     mkdir -p ${LIB_DIR}/qt5/plugins/${i}
     cp -rnv ${_QT_PLUGIN_PATH}/${i}/*.so ${LIB_DIR}/qt5/plugins/${i}
+    # Find any remaining libraries needed for Qt libraries
+    _NOT_FOUND+=$(find ${LIB_DIR}/qt5/plugins/${i} -type f -exec bash -c "get_deps {} $LIB_DIR" ';')
   done
   
   _QT_CONF=${LIB_DIR}/../bin/qt.conf
@@ -136,10 +140,6 @@ if [ "${DEPLOY_QT}" == "1" ]; then
   echo "Plugins = plugins" >> ${_QT_CONF}
   echo "Imports = qml" >> ${_QT_CONF}
   echo "Qml2Imports = qml" >> ${_QT_CONF}
-
-	# Find any remaining libraries needed for Qt libraries
-  _NOT_FOUND+=$(get_deps ${LIB_DIR}/qt5/plugins/platforms/libqxcb.so $LIB_DIR)
-  _NOT_FOUND+=$(find ${LIB_DIR}/qt5/plugins/imageformats -type f -exec bash -c "get_deps {} $LIB_DIR" ';')
 fi
 
 _APPDIR=$2
