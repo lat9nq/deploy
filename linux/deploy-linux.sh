@@ -122,25 +122,31 @@ if [ "${DEPLOY_QT}" == "1" ]; then
   done
   
   _QT_PLUGIN_PATH=$(readlink -e $(find ${_QT_PATH} -type d -regex '.*/plugins/platforms' | head -n 1)/../)
-  
-  cp -nv "${_QT_PLUGIN_PATH}/platforms/libqxcb.so" ${LIB_DIR}/qt5/plugins/platforms/
+
+  mkdir -p ${LIB_DIR}/../plugins/platforms
+  cp -nv "${_QT_PLUGIN_PATH}/platforms/libqxcb.so" ${LIB_DIR}/../plugins/platforms/
 	# Find any remaining libraries needed for Qt libraries
-  _NOT_FOUND+=$(get_deps ${LIB_DIR}/qt5/plugins/platforms/libqxcb.so $LIB_DIR)
+  _NOT_FOUND+=$(get_deps ${LIB_DIR}/../plugins/platforms/libqxcb.so $LIB_DIR)
 
   for i in audio bearer imageformats mediaservice platforminputcontexts platformthemes xcbglintegrations; do
-    mkdir -p ${LIB_DIR}/qt5/plugins/${i}
-    cp -rnv ${_QT_PLUGIN_PATH}/${i}/*.so ${LIB_DIR}/qt5/plugins/${i}
+    mkdir -p ${LIB_DIR}/../plugins/${i}
+    cp -rnv ${_QT_PLUGIN_PATH}/${i}/*.so ${LIB_DIR}/../plugins/${i}
+    find ${LIB_DIR}/../plugins/ -type f -regex '.*\.so' -exec patchelf --set-rpath '$ORIGIN/../../lib:$ORIGIN' {} ';'
     # Find any remaining libraries needed for Qt libraries
-    _NOT_FOUND+=$(find ${LIB_DIR}/qt5/plugins/${i} -type f -exec bash -c "get_deps {} $LIB_DIR" ';')
+    _NOT_FOUND+=$(find ${LIB_DIR}/../plugins/${i} -type f -exec bash -c "get_deps {} $LIB_DIR" ';')
   done
   
   _QT_CONF=${LIB_DIR}/../bin/qt.conf
   echo "[Paths]" > ${_QT_CONF}
-  echo "Prefix = ../lib/qt5" >> ${_QT_CONF}
+  echo "Prefix = ../" >> ${_QT_CONF}
   echo "Plugins = plugins" >> ${_QT_CONF}
   echo "Imports = qml" >> ${_QT_CONF}
   echo "Qml2Imports = qml" >> ${_QT_CONF}
 fi
+
+# Fix rpath of libraries and executable so they can find the packaged libraries
+find ${LIB_DIR} -type f -exec patchelf --set-rpath '$ORIGIN' {} ';'
+patchelf --set-rpath '$ORIGIN/../lib' $_EXECUTABLE
 
 _APPDIR=$2
 cd ${_APPDIR}
